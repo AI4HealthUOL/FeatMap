@@ -1,0 +1,49 @@
+shortened_manipulations:
+  "qwen_Turn_on_the_car's_headlights_so_they_appear_bright_and_illuminated,_while_preserving_the_car's_position,_lighting,_color,_and_all_background_details_exactly_as_in_the_original_image.":
+    "Turn_on_headlights"
+
+  "qwen_Add_flashing_blue_and_red_police_lights_to_the_top_of_the_car,_making_them_appear_illuminated,_while_keeping_the_car's_color,_lighting,_reflections,_position,_and_all_background_details_exactly_the_same.":
+    "Add_police_lights"
+
+  "qwen_Change_the_car's_body_color_to_bright_blue,_while_maintaining_the_exact_same_lighting,_reflections,_background,_and_all_other_details.":
+    "Change_body_color_blue"
+
+  "qwen_Change_the_car's_tire_rim_color_to_red_in_a_realistic_photo_style,_while_keeping_the_car's_body,_lighting,_reflections,_and_background_identical.":
+    "Change_tire_rim_color_red"
+
+  "qwen_Remove_the_car's_side_mirrors_in_a_realistic_photo_style,_while_keeping_the_car's_body,_lighting,_reflections,_and_background_identical.":
+    "Remove_side_mirrors"
+
+  "qwen_Change_only_the_birds_plumage_color_to_bright_blue_0":
+    "Change_plumage_color_blue"
+
+  "qwen_Edit_the_bird_to_show_its_beak_open_in_a_calling_o_0":
+    "Open_beak_call"
+  
+  "qwen_Show_the_bird_gently_preening_one_wing_in_the_same_0":
+    "Preening_one_wing"
+
+
+
+models:
+    - convnext_base.fb_in22k_ft_in1k
+    - swinv2_base_window12to24_192to384_22kft1k
+
+target_layers: [3]
+
+datasets:
+    - STANFORD_CARS
+    - CUB_200_2011
+
+manipulation_model_dirs:
+    - direct
+    - qwen_gs_1_infsteps_10
+  
+dataset_path: "$WORK/datasets"
+model_path: "$WORK/models"
+batch_size: 128
+num_workers: 8
+pin_memory: true
+extract_from_splits:
+  - train
+  - test

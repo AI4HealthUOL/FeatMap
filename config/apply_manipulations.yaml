@@ -1,0 +1,90 @@
+# Currently this supports STANFORD_CARS, CUB_200_2011
+# Can be expanded as long as the new dataset has the same folder structure
+datasets:
+  #- STANFORD_CARS
+  - CUB_200_2011
+
+# Absolute path to the data set
+dataset_path: $WORK/datasets
+
+# Limit classes for manipulation, due to computational costs
+num_classes: 100
+
+# Size the images are saved as
+target_img_size: 288
+
+# All selected augmentations that should be applied to each image
+direct:
+  enabled: false
+  rotation:
+    - 90
+    - 180
+    - 270
+  mirror:
+    - h
+    - v
+  added_noise:
+    - 40
+
+  masks:
+    top_left_square:
+      polygon:
+        - [26, 26]
+        - [103, 26]
+        - [103, 103]
+        - [26, 103]
+      color: [255, 0, 0]
+
+    bottom_right_square:
+      polygon:
+        - [180, 180]
+        - [270, 180]
+        - [270, 270]
+        - [180, 270]
+      color: [0, 255, 0]
+
+    big_square_center:
+      polygon:
+        - [90, 90]
+        - [193, 90]
+        - [193, 193]
+        - [90, 193]
+      color: [0, 0, 255]
+
+    small_square_center:
+      polygon:
+        - [116, 116]
+        - [154, 116]
+        - [154, 154]
+        - [116, 154]
+      color: [255, 255, 0]
+
+  color_adjustments:
+    hue_shift:
+      - 60
+    grayscale: true
+
+# Qwen Image Editing settings and prompts
+qwen:
+  enabled: true
+  model_id: Qwen/Qwen-Image-Edit-2511
+  imgs_per_class: 10
+  num_inference_steps: 10
+  guidance_scale: 1.0
+  true_cfg_scale: 4.5
+  negative_prompt: " "
+  repeats_per_prompt: 1
+  seed: 42
+
+  prompts:
+    STANFORD_CARS:
+      - "Change the car's body color to bright blue, while maintaining the exact same lighting, reflections, background, and all other details."
+      - "Remove the car's side mirrors in a realistic photo style, while keeping the car's body, lighting, reflections, and background identical."
+      - "Turn on the car's headlights so they appear bright and illuminated, while preserving the car's position, lighting, color, and all background details exactly as in the original image."
+      - "Add flashing blue and red police lights to the top of the car, making them appear illuminated, while keeping the car's color, lighting, reflections, position, and all background details exactly the same."
+      - "Change the car's tire rim color to red in a realistic photo style, while keeping the car's body, lighting, reflections, and background identical."
+      - "Remove the car from the image and fill the space naturally with background."
+    CUB_200_2011:
+      - "Change only the birds plumage color to bright blue, without altering the birds species, pose, head orientation, body shape, texture, or expression. Keep the original background, lighting, shadows, camera angle, and image composition exactly the same."
+      - "Edit the bird to show its beak open in a calling or singing posture, while preserving the exact species, head direction, body pose, and limb positions. Do not change the background, lighting, camera angle, or any other element except the mouth/beak opening."
+      - "Show the bird gently preening one wing, in the same pose and background, without changing species or plumage."

@@ -1,0 +1,138 @@
+target_manipulations:
+  STANFORD_CARS:
+    direct:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - grayscale
+        - hue_shift_60
+        - noise_40
+        - mask_big_square_center
+        - mask_bottom_right_square
+        - mask_small_square_center
+        - mask_top_left_square
+
+    qwen_gs_1_infsteps_10:
+      models: ["linear"]
+      manipulations:
+        - Turn_on_headlights
+        - Add_police_lights
+        - Change_body_color_blue
+        - Change_tire_rim_color_red
+        - Remove_side_mirrors
+
+    # Geometric transform specific models
+    geom_tf_apply_group:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: true
+
+    geom_tf_learned_group:
+      models: ["transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: false
+  CUB_200_2011:
+    direct:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - grayscale
+        - hue_shift_60
+        - noise_40
+        - mask_big_square_center
+        - mask_bottom_right_square
+        - mask_small_square_center
+        - mask_top_left_square
+
+    qwen_gs_1_infsteps_10:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - Change_plumage_color_blue
+        - Open_beak_call
+        - Preening_one_wing
+      apply_transform: false
+
+    # Geometric transform specific models
+    geom_tf_apply_group:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: true
+
+    geom_tf_learned_group:
+      models: ["transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: false
+
+model_path: "$WORK/models/"
+norm_params_path: "$WORK/models/norm_params"
+evals_path: "$WORK/evals_mapping_birds"
+dataset_path: "$WORK/datasets"
+
+# Supports features extracted from convnext and swinv2
+extractor_name: ["convnext", "swinv2"]
+
+subset_size: 100
+batch_size: 64
+normalized: false
+
+loss: "COMBINED"
+
+feature_keys: 
+  convnext:
+    feat0:
+      input_dim: 128
+      output_dim: 128
+      spatial_size: 72
+    feat1:
+      input_dim: 256
+      output_dim: 256
+      spatial_size: 36
+    feat2:
+      input_dim: 512
+      output_dim: 512
+      spatial_size: 18
+    feat3:
+      input_dim: 1024
+      output_dim: 1024
+      spatial_size: 9
+  swinv2:
+    # This is the last layer before the classifier head
+    feat0:
+      input_dim: 1024
+      output_dim: 1024
+      spatial_size: 12
+
+
+models:
+  linear: ""
+  mlp:
+     hidden_dim: 512
+     dropout: 0.2
+  cnn:
+     hidden_dim: 512
+     kernel_size: 3
+     dropout: 0.2
+  transformer:
+    num_layers: 4
+    num_heads: 8
+    hidden_dim: 512
+    dropout: 0.2
+

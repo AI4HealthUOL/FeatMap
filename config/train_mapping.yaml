@@ -1,0 +1,169 @@
+target_manipulations:
+  STANFORD_CARS:
+    direct:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - grayscale
+        - hue_shift_60
+        - noise_40
+        - mask_big_square_center
+        - mask_bottom_right_square
+        - mask_small_square_center
+        - mask_top_left_square
+
+    qwen_gs_1_infsteps_10:
+      models: ["linear"]
+      manipulations:
+        - Turn_on_headlights
+        - Add_police_lights
+        - Change_body_color_blue
+        - Change_tire_rim_color_red
+        - Remove_side_mirrors
+
+    # Geometric transform specific models
+    geom_tf_apply_group:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: true
+
+    geom_tf_learned_group:
+      models: ["transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: false
+  CUB_200_2011:
+    direct:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - grayscale
+        - hue_shift_60
+        - noise_40
+        - mask_big_square_center
+        - mask_bottom_right_square
+        - mask_small_square_center
+        - mask_top_left_square
+
+    qwen_gs_1_infsteps_10:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - Change_plumage_color_blue
+        - Open_beak_call
+        - Preening_one_wing
+      apply_transform: false
+
+    # Geometric transform specific models
+    geom_tf_apply_group:
+      models: ["linear", "mlp", "cnn", "transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: true
+
+    geom_tf_learned_group:
+      models: ["transformer"]
+      manipulations:
+        - rotation_90
+        - rotation_180
+        - rotation_270
+        - mirror_h
+        - mirror_v
+      apply_transform: false
+
+model_path: "$WORK/models/"
+log_path: "$WORK/logs/"
+norm_params_path: "$WORK/models/norm_params"
+evals_path: "$WORK/evals"
+dataset_path: "$WORK/datasets"
+
+shared_norm_type: "resized"
+
+# Training supports features extracted from convnext and swinv2
+extractor_name: ["convnext", "swinv2"]
+
+# Size of the extracted features from convnext stages
+feature_keys:
+  convnext:
+    feat0:
+      input_dim: 128
+      output_dim: 128
+      spatial_size: 72
+      normalize_features: true
+      recalc_norm_params: true
+    feat1:
+      input_dim: 256
+      output_dim: 256
+      spatial_size: 36
+      normalize_features: true
+      recalc_norm_params: true
+    feat2:
+      input_dim: 512
+      output_dim: 512
+      spatial_size: 18
+      normalize_features: true
+      recalc_norm_params: true
+    feat3:
+      input_dim: 1024
+      output_dim: 1024
+      spatial_size: 9
+      normalize_features: false
+      recalc_norm_params: false
+  swinv2:
+    # This is the last layer before the classifier head
+    feat0:
+      input_dim: 1024
+      output_dim: 1024
+      spatial_size: 12
+      normalize_features: false
+      recalc_norm_params: false
+
+
+# if available, otherwise uses all remaining
+train_subset_size: 8000
+# random seed for dataset creation
+seed: 42
+val_ratio: 0.05
+
+batch_size: 32
+accumulate_grad_batches: 2
+learning_rate: 0.0001
+# MSE, COSSIM, COMBINED (Scaled MSE+COSSIM)
+loss_functions: ["COMBINED"]
+mse_scale: 0.3
+cossim_scale: 0.7
+num_epochs: 100
+# Early Stopping patience
+patience: 6
+
+num_workers: 7
+persistent_workers: true
+prefetch_factor: 4
+pin_memory: true
+
+models:
+  linear: ""
+  mlp:
+     hidden_dim: 512
+     dropout: 0.2
+  cluster:
+     num_clusters: 10
+  cnn:
+     hidden_dim: 512
+     kernel_size: 3
+     dropout: 0.2
+  transformer:
+    num_layers: 4
+    num_heads: 8
+    hidden_dim: 512
+    dropout: 0.2
