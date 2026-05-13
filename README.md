@@ -1,8 +1,22 @@
 # FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry
-This is the official repository for the paper: FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry.
+This is the official repository for the paper: [FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry](https://arxiv.org/abs/2605.11203).
 
 ## Abstract
 Intermediate feature representations represent the backbone for the expressivity and adaptability of deep neural networks. However, their geometric structure remains poorly understood. In this submission, we provide indirect insights into this matter by applying a broad selection of manipulations in input space, ranging from geometric and photometric transformations to local masking and semantic manipulations using generative image editing models, and assess the feasibility of learning a mapping in the feature space, mapping from the original to the manipulated feature map. To this end, we devise different types of mappings, from linear to non-linear and local to global mappings and assess both the reconstruction quality of the mapping as well as the semantic content of the mapped representations. We demonstrate the feasibility of learning such mappings for all considered transformations. While global (transformer) models that operate on the full feature map often achieve best results, we show that the same can be achieved with a shared linear model operating on a single feature vector typically with very little degradation in reconstruction quality, even for highly non-trivial semantic manipulations. We analyze the corresponding mappings across different feature layers and characterize them according to dominance of weight vs. bias and the effective rank of the linear transformations. These results provide hints for the hypothesis that the feature space is to a first degree of approximation organized in linear structures. From a broader perspective, the study demonstrates that generative image editing models might open the door to a deeper understanding of the feature space through input manipulation.
+
+## Citation
+If you find our work helpful, please cite our paper:
+```
+@misc{krey2026featmapunderstandingimagemanipulation,
+      title={FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry}, 
+      author={Elias B. Krey and Nils Neukirch and Nils Strodthoff},
+      year={2026},
+      eprint={2605.11203},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2605.11203}, 
+}
+```
 
 ## Method overview
 
