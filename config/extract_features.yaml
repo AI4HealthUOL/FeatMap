@@ -39,8 +39,8 @@ manipulation_model_dirs:
     - direct
     - qwen_gs_1_infsteps_10
   
-dataset_path: "$WORK/datasets"
-model_path: "$WORK/models"
+dataset_path: "datasets"
+model_path: "models"
 batch_size: 128
 num_workers: 8
 pin_memory: true

@@ -41,10 +41,10 @@ target_manipulations:
         - mirror_v
       apply_transform: false
 
-model_path: "$WORK/models/"
-norm_params_path: "$WORK/models/norm_params"
-evals_path: "$WORK/evals_mapping"
-dataset_path: "$WORK/datasets"
+model_path: "models/"
+norm_params_path: "models/norm_params"
+evals_path: "evals_mapping"
+dataset_path: "datasets"
 
 ft_models: [
  #"convnext_base.fb_in22k_ft_in1k_frozen_stages0-stages1-stages2-stages3_train_best.ckpt",

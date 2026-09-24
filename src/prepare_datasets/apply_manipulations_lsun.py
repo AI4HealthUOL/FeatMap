@@ -3,6 +3,7 @@ import os
 import re
 import gc
 import json
+import time
 from PIL import Image
 from torchvision import transforms
 import torch
@@ -24,7 +25,6 @@ from manipulations import (
     apply_grayscale,
 )
 
-
 """
 Dataset augmentation pipeline for feature-space analysis.
 
@@ -44,6 +44,8 @@ Outputs:
 
 See config/apply_manipulations.yaml for configuration.
 """
+
+token = os.environ.get("HF_TOKEN")
 
 
 def extract_leading_number(folder_name):
@@ -220,7 +222,9 @@ def process_image_qwen_manip(image_info, transform, qwen_prompts):
                 output = qwen_pipeline(**inputs)
 
             for idx, out_img in enumerate(output.images):
-                save_name = f"{base_name}_qwen_{prompt.replace(' ', '_')}_{idx}.jpg"
+                safe_prompt = re.sub(
+                    r"[^a-zA-Z0-9_]", "", prompt.replace(" ", "_"))[:50]
+                save_name = f"{base_name}_qwen_{safe_prompt}_{idx}.jpg"
 
                 out_img.save(
                     os.path.join(
@@ -228,35 +232,23 @@ def process_image_qwen_manip(image_info, transform, qwen_prompts):
                         save_name,
                     )
                 )
-            # Running this for many images build up VRAM
-            # Clearing made this possible here
-            del output
-            gc.collect()
-            torch.cuda.empty_cache()
-
 
 def get_tasks(
     input_dir,
     output_dir,
-    sorted_classes,
-    num_classes,
     run_direct,
     manipulation_cfg,
     imgs_per_class_qwen=None,
     qwen_pipeline=None,
     qwen_parameters=None,
 ):
-    """Build the task list for each method and sort savepaths"""
-    image_tasks_direct = []
-    image_tasks_qwen = []
-    selected_classes = (
-        sorted_classes if num_classes == -1 else sorted_classes[:num_classes]
-    )
-    for class_folder in selected_classes:
-        class_path = os.path.join(input_dir, class_folder)
-        if not os.path.isdir(class_path):
-            continue
-        class_out_dir = os.path.join(output_dir, class_folder)
+        """Build the task list for each method and sort savepaths"""
+        image_tasks_direct = []
+        image_tasks_qwen = []
+
+        class_path = input_dir
+
+        class_out_dir = output_dir
         os.makedirs(class_out_dir, exist_ok=True)
         if run_direct:
             class_out_dir_direct = os.path.join(class_out_dir, "direct")
@@ -285,22 +277,21 @@ def get_tasks(
                 image_tasks_qwen.append(
                     (
                         image_path,
-                        class_out_dir,
+                        class_out_dir_qwen,
                         base_name,
                         qwen_pipeline,
                         qwen_parameters,
                     )
                 )
-    return image_tasks_direct, image_tasks_qwen
+        return image_tasks_direct, image_tasks_qwen
 
 
 def main():
     # All config settings
     # Which manipulations, which datasets, train, test split
-    with open("../../config/apply_manipulations.yaml") as f:
+    with open("../../config/apply_manipulations_lsun.yaml") as f:
         manipulation_cfg = yaml.safe_load(f)
 
-    # Currently supported: STANFORD_CARS
     datasets = manipulation_cfg.get("datasets", [])
     if not datasets:
         datasets = [manipulation_cfg["dataset"]]
@@ -314,15 +305,15 @@ def main():
 
     for dataset in datasets:
         print(f"\nProcessing dataset: {dataset}")
-        num_classes = manipulation_cfg["num_classes"]
         transform = transforms.Compose(
             [
                 transforms.Resize(target_img_size),
                 transforms.CenterCrop(target_img_size),
             ]
         )
-        if dataset == "STANFORD_CARS":
-            root_dir = os.path.join(dataset_path, "STANFORD_CARS/")
+
+        root_dir = os.path.join(dataset_path, dataset)
+
 
         # Any dataset used here needs to use this folder structure
         # root_dir/images/train, root_dir/images/test
@@ -355,18 +346,13 @@ def main():
         imgs_per_class_qwen = None
         height = width = target_img_size
 
-        # Qwen requires a valid Huggingface token
+        # Qwen require a valid Huggingface token
         if run_qwen:
             device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
             print(f"Using device: {device}")
-<<<<<<< HEAD
-
-            token = os.environ.get("HF_TOKEN")
-=======
             token = os.environ.get(
                 "HF_TOKEN", "")
->>>>>>> e2c2184 (V2: Feat1-3 DinoV3, SwinV2, ConvNeXt, Lsun Bedroom dataset)
 
             if token is None or token.startswith("hf_***"):
                 raise ValueError(
@@ -400,7 +386,7 @@ def main():
             base_repo = "Qwen/Qwen-Image-Edit-2511"
             n_gpus = torch.cuda.device_count()
 
-            # Qwen-Image-Edit-2511 is a large model (~57 GB)
+            # Qwen-Image-Edit-2511 is a large model
             # For this use case 2 Nvidia L40 GPUs were required
             # Running this on a large enough single GPU improved inference speed when available
             if n_gpus > 1:
@@ -450,30 +436,25 @@ def main():
             get_tasks(
                 train_dir,
                 train_output_dir,
-                sorted_train_classes,
-                num_classes,
                 run_direct,
                 manipulation_cfg,
-                imgs_per_class,
-                imgs_per_class_qwen,
-                qwen_pipeline,
-                qwen_parameters,
+                imgs_per_class_qwen=3000,
+                qwen_pipeline=qwen_pipeline,
+                qwen_parameters=qwen_parameters,
             )
         )
         test_image_tasks_direct, test_image_tasks_qwen = (
             get_tasks(
                 test_dir,
                 test_output_dir,
-                sorted_test_classes,
-                num_classes,
                 run_direct,
                 manipulation_cfg,
-                5,
-                5,
-                qwen_pipeline,
-                qwen_parameters,
+                imgs_per_class_qwen=500,
+                qwen_pipeline=qwen_pipeline,
+                qwen_parameters=qwen_parameters,
             )
         )
+
 
         # Executes the tasks per method
         if run_direct:
@@ -492,46 +473,42 @@ def main():
                 )
             end_time = time.time()
             print(
-                f"Direct manipulations for train/test {dataset} with {num_classes} class(es) runtime: {end_time - start_time:.2f} seconds"
+                f"Direct manipulations for train/test {dataset} runtime: {end_time - start_time:.2f} seconds"
             )
 
         if run_qwen:
             start_time = time.time()
 
             for task in train_image_tasks_qwen:
-                gc.collect()
-                torch.cuda.empty_cache()
                 process_image_qwen_manip(
-                    task,
-                    transform,
-                    qwen_prompts,
-                )
+                     task,
+                     transform,
+                     qwen_prompts,
+                 )
 
             train_qwen_time = time.time() - start_time
 
             start_time = time.time()
 
             for task in test_image_tasks_qwen:
-                gc.collect()
-                torch.cuda.empty_cache()
-                process_image_qwen_manip(
-                    task,
-                    transform,
-                    qwen_prompts,
-                )
+                 process_image_qwen_manip(
+                     task,
+                     transform,
+                     qwen_prompts,
+                  )
 
             test_qwen_time = time.time() - start_time
 
             print(
-                f"\nQwen manipulations for train {dataset} "
-                f"for nr tasks {len(train_image_tasks_qwen)} "
-                f"runtime: {train_qwen_time:.2f} seconds"
+                 f"\nQwen manipulations for train {dataset} "
+                 f"for nr tasks {len(train_image_tasks_qwen)} "
+                 f"runtime: {train_qwen_time:.2f} seconds"
             )
 
             print(
-                f"Qwen manipulations for test {dataset} "
-                f"for nr tasks {len(test_image_tasks_qwen)} "
-                f"runtime: {test_qwen_time:.2f} seconds"
+                 f"Qwen manipulations for test {dataset} "
+                  f"for nr tasks {len(test_image_tasks_qwen)} "
+                  f"runtime: {test_qwen_time:.2f} seconds"
             )
 
 

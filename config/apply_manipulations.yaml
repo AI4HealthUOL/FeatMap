@@ -5,7 +5,7 @@ datasets:
   - CUB_200_2011
 
 # Absolute path to the data set
-dataset_path: $WORK/datasets
+dataset_path: datasets
 
 # Limit classes for manipulation, due to computational costs
 num_classes: 100

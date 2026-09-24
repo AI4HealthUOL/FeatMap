@@ -41,10 +41,10 @@ target_manipulations:
         - mirror_v
       apply_transform: false
 
-model_path: "$WORK/models/"
-norm_params_path: "$WORK/models/norm_params"
-evals_path: "$WORK/evals_mapping_tfs"
-dataset_path: "$WORK/datasets"
+model_path: "models/"
+norm_params_path: "models/norm_params"
+evals_path: "evals_mapping_tfs"
+dataset_path: "datasets"
 
 # Supports features extracted from convnext and swinv2
 extractor_name: ["swinv2", "convnext"]

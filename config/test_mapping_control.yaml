@@ -1,0 +1,103 @@
+target_manipulations:
+  STANFORD_CARS:
+    direct:
+      models: ["linear"]
+      manipulations:
+        - grayscale
+
+    qwen_gs_1_infsteps_10:
+      models: ["linear", "transformer"]
+      manipulations:
+          - Change_tire_rim_color_red
+
+
+model_path: "$WORK/models_cars/"
+norm_params_path: "$WORK/models/norm_params"
+evals_path: "$WORK/evals_mapping_control"
+dataset_path: "$WORK/datasets"
+
+
+# Supports features extracted from convnext, dinov3 and swinv2
+extractor_name: ["convnext", "swinv2", "dinov3"]
+
+subset_size: 50
+batch_size: 4
+use_ground_truth_delta: true
+recalc_norm_params: true
+loss_functions: ["mse_median_cos"]
+
+feature_keys: 
+  convnext:
+        feat1:
+          input_dim: 256
+          output_dim: 256
+          spatial_size: 36
+          normalize_features: true
+          recalc_norm_params: true
+        feat2:
+          input_dim: 512
+          output_dim: 512
+          spatial_size: 18
+          normalize_features: true
+          recalc_norm_params: true
+        feat3:
+           input_dim: 1024
+           output_dim: 1024
+           spatial_size: 9
+           normalize_features: false
+           recalc_norm_params: false
+  swinv2:
+        feat1:
+            input_dim: 256
+            output_dim: 256
+            spatial_size: 48
+            normalize_features: true
+            recalc_norm_params: true
+        feat2:
+            input_dim: 512
+            output_dim: 512
+            spatial_size: 24
+            normalize_features: true
+            recalc_norm_params: true
+        feat3:
+             input_dim: 1024
+             output_dim: 1024
+             spatial_size: 12
+             normalize_features: true
+             recalc_norm_params: true
+  dinov3:
+       feat1:
+            input_dim: 768
+            output_dim: 768
+            spatial_size: 14
+            normalize_features: true
+            recalc_norm_params: true
+       feat2:
+            input_dim: 768
+            output_dim: 768
+            spatial_size: 14
+            normalize_features: true
+            recalc_norm_params: true
+       feat3:
+            input_dim: 768
+            output_dim: 768
+            spatial_size: 14
+            normalize_features: true
+            recalc_norm_params: true
+
+
+models:
+  linear: ""
+  mlp:
+     hidden_dim: 512
+     dropout: 0.2
+  cnn:
+     hidden_dim: 512
+     kernel_size: 3
+     dropout: 0.2
+  transformer:
+    num_layers: 4
+    num_heads: 8
+    hidden_dim: 512
+    dropout: 0.2
+

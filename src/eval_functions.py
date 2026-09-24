@@ -42,6 +42,9 @@ class Evaluator:
         self.lpips_model = lpips.LPIPS(net="alex").to(self.device)
         self.lpips_model.eval()
 
+        self.eval_save_path = eval_save_path
+        self.extractor_name = extractor_name
+
         self.feature_extraction_model = (
             timm.create_model(
                 "convnext_base.fb_in22k_ft_in1k", pretrained=True, features_only=True
@@ -50,8 +53,6 @@ class Evaluator:
             .to(self.device)
         )
 
-        self.csv_path = os.path.join(
-            eval_save_path, f"evaluations_{extractor_name}.csv")
 
         os.makedirs(eval_save_path, exist_ok=True)
 
@@ -75,7 +76,11 @@ class Evaluator:
         fullpath,
         target_vs_mapped_metrics,
         target_reconstructed_vs_mapped_metrics,
+        loss_name
     ):
+        self.csv_path = os.path.join(
+            self.eval_save_path, f"evaluations_{self.extractor_name}_{feature_key}.csv")
+
         fieldnames = [
             "mode",
             "dataset",
@@ -96,6 +101,7 @@ class Evaluator:
             "target_reconstructed_vs_mapped_LPIPS",
             "target_reconstructed_vs_mapped_MEDIAN_COS_SIM",
             "target_reconstructed_vs_mapped_MASKED_MEDIAN_COS_SIM",
+            "loss_name"
         ]
         file_exists = os.path.isfile(self.csv_path)
         with open(self.csv_path, "a", newline="") as csvfile:
@@ -105,6 +111,7 @@ class Evaluator:
             writer.writerow(
                 {
                     "mode": mode,
+                    "loss_name": loss_name,
                     "dataset": dataset,
                     "feature_key": feature_key,
                     "original_id": original_id,
@@ -301,16 +308,18 @@ class Evaluator:
         eval_save_dir,
         feature_key,
         showFig,
+        loss_name
     ):
         def load_if_path(img):
             if isinstance(img, str):
-                return Image.open(img).convert("RGB")
+                return Image.open(img.replace("kedi1373", "zual3488")).convert("RGB")
             return img.convert("RGB") if img.mode != "RGB" else img
 
         original_img = load_if_path(original_img_path)
         manipulated_img = load_if_path(manipulated_img_path)
         mapped_img = load_if_path(mapped_img_path)
         mapped_img = mapped_img.resize(manipulated_img.size)
+
         target_reconstructed_img = load_if_path(target_reconstructed_img_path)
         target_reconstructed_img = target_reconstructed_img.resize(
             manipulated_img.size)
@@ -345,4 +354,5 @@ class Evaluator:
             fullpath,
             target_vs_mapped_metrics,
             target_reconstructed_vs_mapped_metrics,
+            loss_name
         )

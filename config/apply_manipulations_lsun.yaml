@@ -1,0 +1,80 @@
+# Can be expanded as long as the new dataset has the same folder structure
+datasets:
+  - lsun_bedroom
+
+# Absolute path to the data set
+dataset_path: datasets
+
+# Size the images are saved as
+target_img_size: 288
+
+# All selected augmentations that should be applied to each image
+direct:
+  enabled: false
+  rotation:
+    - 90
+    - 180
+    - 270
+  mirror:
+    - h
+    - v
+  added_noise:
+    - 40
+
+  masks:
+    top_left_square:
+      polygon:
+        - [26, 26]
+        - [103, 26]
+        - [103, 103]
+        - [26, 103]
+      color: [255, 0, 0]
+
+    bottom_right_square:
+      polygon:
+        - [180, 180]
+        - [270, 180]
+        - [270, 270]
+        - [180, 270]
+      color: [0, 255, 0]
+
+    big_square_center:
+      polygon:
+        - [90, 90]
+        - [193, 90]
+        - [193, 193]
+        - [90, 193]
+      color: [0, 0, 255]
+
+    small_square_center:
+      polygon:
+        - [116, 116]
+        - [154, 116]
+        - [154, 154]
+        - [116, 154]
+      color: [255, 255, 0]
+
+  color_adjustments:
+    hue_shift:
+      - 10
+      - 60
+    grayscale: true
+
+# Qwen Image Editing settings and prompts
+qwen:
+  enabled: true
+  model_id: Qwen/Qwen-Image-Edit-2511
+  imgs_per_class: 3000
+  num_inference_steps: 10
+  guidance_scale: 1.0
+  true_cfg_scale: 4.5
+  negative_prompt: " "
+  repeats_per_prompt: 1
+  seed: 42
+
+  prompts:
+    lsun_bedroom:
+        - "Recolor the visible bedding bright blue. Change only the sheets, blankets, and pillows on the bed. Keep the bed frame and all other objects, furniture, walls, floor, ceiling, and decorations unchanged. Preserve their original colors, textures, materials, positions, lighting, shadows, room layout, and perspective"
+        - "Add a single brown teddy bear positioned in the middle of the bed. Change only the addition of the teddy bear. Do not alter the bed, bedding, pillows, furniture, walls, floor, ceiling, or any existing objects. Preserve their original colors, textures, materials, positions, lighting, shadows, reflections, room layout, and perspective exactly"
+        - "Turn on all visible lamps in the room. Change only the lamp states and the resulting illumination. Keep the lamps, furniture, walls, floor, ceiling, decorations, and all other objects in their original positions, colors, shapes, and materials. Do not add, remove, or modify any objects. Preserve the original room layout, perspective, and composition"
+        - "Make the visible bed appear naturally unmade and recently used by slightly disturbing the bedding, sheets, blankets, and pillows. Modify only the bedding on the bed. Do not add or remove any objects, and do not change the bed frame, furniture, walls, floor, ceiling, decorations, or any other part of the room. Preserve the original colors, materials, lighting, shadows, room layout, perspective, and composition"

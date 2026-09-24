@@ -1,21 +1,23 @@
-import os
 import json
+import os
 import re
 import time
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import timm
 import torch
 import torchvision.transforms as transforms
 import yaml
-from torch.utils.data import DataLoader
-from torchvision.datasets import ImageFolder
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 
 from prepare_datasets.feature_dataset_impl import (
     MemmapFeatureWriter,
     build_pairs_from_index,
 )
+
 from FeatInv.featmap_intermed.swinv2_extractor import (
     SwinV2FeatureExtractor,
 )
@@ -25,29 +27,41 @@ from FeatInv.featmap_intermed.dinov3_extractor import (
     DINOV3_STD,
 )
 
+"""
+Feature extraction pipeline using ConvNeXt and SwinV2 backbones.
+
+This script converts augmented image datasets into feature-space representations
+used throughout the FeatMap pipeline.
+
+Pipeline:
+1. Load augmented images (direct + generative manipulations)
+2. Apply backbone-specific preprocessing (resize, normalization)
+3. Extract intermediate feature maps from selected layers
+4. Store features efficiently using memory-mapped arrays (memmap)
+5. Save metadata (original_id, manipulation, file path)
+6. Build pairing index linking original ↔ manipulated samples
+
+Outputs:
+- Feature tensors stored as memmaps (per feature layer)
+- index.json with metadata for each sample
+- pairs.npy defining training pairs for mapping models
+
+See config/extract_features.yaml for configuration.
+"""
+
+SWIN_MODEL_NAME = "swinv2_base_window12to24_192to384_22kft1k"
+
 DINO_MODEL_NAME = "dinov3_vitb16_featmap"
 DINO_HF_MODEL_NAME = (
     "facebook/dinov3-vitb16-pretrain-lvd1689m"
 )
 DINO_IMAGE_SIZE = 224
 
-"""
-Feature extraction pipeline using ConvNeXt and SwinV2 backbones.
-
-
-All saved feature maps use NCHW layout:
-    (batch, channels, height, width)
-"""
-
-
-SWIN_MODEL_NAME = "swinv2_base_window12to24_192to384_22kft1k"
-
 ALLOWED_MANIPULATIONS = {
-    "Add_police_lights",
-    "Change_body_color_blue",
-    "Change_tire_rim_color_red",
-    "Remove_side_mirrors",
-    "Turn_on_headlights",
+    "Add_teddybear",
+    "Make_bed_unmade",
+    "Color_bedding_blue",
+    "Turn_on_lamps",
     "grayscale",
     "hue_shift_60",
     "hue_shift_10",
@@ -61,92 +75,48 @@ ALLOWED_MANIPULATIONS = {
     "rotation_270",
     "mirror_h",
     "mirror_v",
-    "resized",
+    "resized"
 }
 
-
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 
-from pathlib import Path
+# Config defines which datasets and train/test splits are extracted
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = PROJECT_ROOT / "config" / "extract_features.yaml"
+CONFIG_PATH = (
+    PROJECT_ROOT
+    / "config"
+    / "extract_features_lsun.yaml"
+)
 
 with CONFIG_PATH.open("r", encoding="utf-8") as file:
     cfg = yaml.safe_load(file)
 
-
 datasets = cfg.get("datasets", [cfg.get("dataset")])
+model_path = os.path.expandvars(cfg["model_path"])
 batch_size = cfg.get("batch_size", 128)
 num_workers = cfg.get("num_workers", 6)
 pin_memory = cfg.get("pin_memory", True)
+target_layers = cfg["target_layers"]
 extract_from_splits = cfg["extract_from_splits"]
-dataset_path = os.path.expandvars(
-    cfg.get("dataset_path", "")
-)
-manipulation_model_dirs = cfg.get(
-    "manipulation_model_dirs",
-    [],
-)
-short_map = cfg.get(
-    "shortened_manipulations",
-    {},
-)
+dataset_path = os.path.expandvars(cfg.get("dataset_path", ""))
+manipulation_model_dirs = cfg.get("manipulation_model_dirs", [])
 
 
-def get_target_layers(config, model_name):
-    """
-    Supports either:
-
-    target_layers: [0, 1, 2, 3]
-
-    or:
-
-    target_layers:
-      model_name_a: [0, 1, 2, 3]
-      model_name_b: [0, 1, 2, 3]
-    """
-    configured_layers = config["target_layers"]
-
-    if isinstance(configured_layers, dict):
-        if model_name not in configured_layers:
-            raise KeyError(
-                f"No target_layers configured for {model_name}"
-            )
-        configured_layers = configured_layers[model_name]
-
-    return list(configured_layers)
-
-
-from functools import lru_cache
-import re
-
-_QWEN_SUFFIX_RE = re.compile(r"_\d+$")
-
-@lru_cache(maxsize=None)
-def cached_extract_manipulation(path: str) -> str:
-    name = os.path.basename(path)
-    manip = name.split("_", 1)[1]
-    manip = os.path.splitext(manip)[0]
-    manip = manip.replace(" ", "_")
-    if manip.startswith("qwen_"):
-        manip = _QWEN_SUFFIX_RE.sub("", manip)
-    return manip
-
-@lru_cache(maxsize=None)
-def cached_extract_original_id(path: str) -> str:
+def extract_original_id(path: str):
+    """Extracts the unique, original image id from the filename."""
     return os.path.basename(path).split("_")[0]
 
-def normalize_manipulation(manipulation):
-    if isinstance(manipulation, bytes):
-        return manipulation.decode()
 
-    return manipulation
+def normalize_manip(m):
+    if isinstance(m, bytes):
+        m = m.decode()
+    return m
 
 
 def extract_manipulation(path: str):
@@ -155,23 +125,75 @@ def extract_manipulation(path: str):
     manip = os.path.splitext(manip)[0]
     manip = manip.replace(" ", "_")
 
+    # Normalize qwen prompt variants by dropping the trailing numeric suffix
+    # from filenames like ..._0, ..._1, etc.
     if manip.startswith("qwen_"):
         manip = re.sub(r"_\d+$", "", manip)
 
-    return normalize_manipulation(manip)
+    manip = normalize_manip(manip)
 
+    return manip
 
-class ImageFolderWithPaths(ImageFolder):
-    """ImageFolder that also returns the image path."""
+class ImageDatasetWithPaths(Dataset):
+    extensions = {".jpg", ".jpeg"}
+
+    def __init__(
+        self,
+        root,
+        transform=None,
+        subdir_name=None,
+        allowed_manips=None,
+        short_map=None,
+    ):
+        self.transform = transform
+
+        samples = sorted(
+            os.path.join(dirpath, filename)
+            for dirpath, _, filenames in os.walk(root)
+            for filename in filenames
+            if os.path.splitext(filename)[1].lower() in self.extensions
+        )
+
+        if subdir_name:
+            samples = [
+                path for path in samples
+                if subdir_name in path.split(os.sep)
+            ]
+
+        if allowed_manips is not None:
+            short_map = short_map or {}
+            samples = [
+                path
+                for path in samples
+                if short_map.get(
+                    extract_manipulation(path),
+                    extract_manipulation(path),
+                ) in allowed_manips
+            ]
+
+        self.samples = samples
+        self.targets = [0] * len(samples)
+        self.imgs = list(zip(self.samples, self.targets))
+
+    def __len__(self):
+        return len(self.samples)
 
     def __getitem__(self, index):
-        path, target = self.samples[index]
-        image = self.loader(path)
+        path = self.samples[index]
+        target = self.targets[index]
+
+        with Image.open(path) as image:
+            image = image.convert("RGB")
 
         if self.transform is not None:
             image = self.transform(image)
 
         return image, target, path
+
+SWIN_MODEL_NAME = (
+    "swinv2_base_window12to24_192to384_22kft1k"
+)
+
 
 def extract_features_for_batch(
     model,
@@ -180,132 +202,18 @@ def extract_features_for_batch(
     target_layers,
 ):
     if model_name == SWIN_MODEL_NAME:
-        feats = model.extract(
+        return model.extract(
             images,
             target_layers=target_layers,
         )
-
-        if isinstance(feats, list):
-            feats = {
-                layer: feat
-                for layer, feat in zip(target_layers, feats)
-            }
-        elif not isinstance(feats, dict):
-            raise TypeError(
-                f"SwinV2 extractor returned unexpected type: {type(feats)}"
-            )
-
-        return feats
 
     if model_name == DINO_MODEL_NAME:
-        feats = model.extract(
+        return model.extract(
             images,
             target_layers=target_layers,
         )
 
-        if isinstance(feats, list):
-            feats = {
-                layer: feat
-                for layer, feat in zip(target_layers, feats)
-            }
-        elif not isinstance(feats, dict):
-            raise TypeError(
-                f"DINOv3 extractor returned unexpected type: {type(feats)}"
-            )
-
-        return feats
-
-    out = model(images)
-
-    if not isinstance(out, (list, tuple)):
-        raise TypeError(
-            f"Model {model_name} returned unexpected type: {type(out)}"
-        )
-
-    if len(out) != len(target_layers):
-        raise RuntimeError(
-            f"Model returned {len(out)} feature maps, but "
-            f"{len(target_layers)} target layers were requested."
-        )
-
-    # out_indices=(1, 2, 3) means:
-    # out[0] -> original layer 1
-    # out[1] -> original layer 2
-    # out[2] -> original layer 3
-    return {
-        layer: feature
-        for layer, feature in zip(target_layers, out)
-    }
-
-
-def validate_feature_keys(features, target_layers):
-    if isinstance(features, dict):
-        available = set(features.keys())
-    elif isinstance(features, list):
-        # Assume list indices 0..len-1 correspond to layers
-        available = set(range(len(features)))
-    else:
-        raise TypeError(
-            f"features must be dict or list, got {type(features)}"
-        )
-
-    requested = set(target_layers)
-    missing = requested - available
-
-    if missing:
-        raise RuntimeError(
-            f"Missing requested feature layers {sorted(missing)}. "
-            f"Available layers: {sorted(available)} (features type: {type(features).__name__})"
-        )
-
-@torch.inference_mode()
-def test_one_batch(
-    dataloader,
-    model,
-    model_name,
-    target_layers,
-    split,
-):
-    try:
-        images, targets, paths = next(iter(dataloader))
-    except StopIteration:
-        raise RuntimeError("The dataloader is empty.")
-
-    images = images.to(
-        device,
-        non_blocking=True,
-    )
-
-    features = extract_features_for_batch(
-        model=model,
-        images=images,
-        model_name=model_name,
-        target_layers=target_layers,
-    )
-
-    validate_feature_keys(
-        features,
-        target_layers,
-    )
-
-    print(f"\n[{split}] one-batch test")
-    print(f"Images:  {tuple(images.shape)}")
-    print(f"Targets: {tuple(targets.shape)}")
-    print(f"Paths:   {len(paths)}")
-
-    for layer in target_layers:
-        feature = features[layer].contiguous()
-
-        print(
-            f"feat{layer}: "
-            f"shape={tuple(feature.shape)}, "
-            f"dtype={feature.dtype}, "
-            f"device={feature.device}, "
-            f"min={feature.min().item():.5f}, "
-            f"max={feature.max().item():.5f}"
-        )
-
-    print("One-batch test passed.\n")
+    return model(images)
 
 @torch.inference_mode()
 def extract_and_store_features(
@@ -322,36 +230,44 @@ def extract_and_store_features(
 
     os.makedirs(feature_dir, exist_ok=True)
 
-    try:
-        imgs, _, _ = next(iter(dataloader))
-    except StopIteration:
-        raise RuntimeError(
-            f"No images found for {dataset_name}/{split} in "
-            f"{feature_dir}"
-        )
+    if len(dataloader.dataset) == 0:
+        print(f"[{split}] no images found, skipping")
+        return
 
-    imgs = imgs[:2].to(
+    try:
+        images, _, _ = next(iter(dataloader))
+    except StopIteration:
+        print(f"[{split}] empty dataloader, skipping")
+        return
+
+    images = images[:2].to(
         device,
         non_blocking=True,
     )
 
     probe_features = extract_features_for_batch(
         model=model,
-        images=imgs,
+        images=images,
         model_name=model_name,
         target_layers=target_layers,
     )
 
-    validate_feature_keys(
-        probe_features,
-        target_layers,
-    )
+    available_layers = set(probe_features.keys())
+    requested_layers = set(target_layers)
+    missing_layers = requested_layers - available_layers
+
+    if missing_layers:
+        raise RuntimeError(
+            f"Missing layers {sorted(missing_layers)}. "
+            f"Available layers: {sorted(available_layers)}"
+        )
 
     fixed_features = {}
 
     for layer in target_layers:
         feature = probe_features[layer].contiguous()
         fixed_features[layer] = feature
+
         print(
             f"feat{layer} final shape: "
             f"{tuple(feature.shape)}"
@@ -370,9 +286,11 @@ def extract_and_store_features(
         max_samples=len(dataloader.dataset),
     )
 
-    for batch_idx, (images, targets, paths) in enumerate(
-        dataloader
-    ):
+    for batch_idx, (
+        images,
+        targets,
+        paths,
+    ) in enumerate(dataloader):
         images = images.to(
             device,
             non_blocking=True,
@@ -383,11 +301,6 @@ def extract_and_store_features(
             images=images,
             model_name=model_name,
             target_layers=target_layers,
-        )
-
-        validate_feature_keys(
-            features,
-            target_layers,
         )
 
         features_dict = {}
@@ -406,16 +319,23 @@ def extract_and_store_features(
                 )
 
             features_dict[f"feat{layer}"] = (
-                feature.detach().cpu()
+                feature.detach()
+                .cpu()
+                .contiguous()
             )
 
         metadata = []
+
         for path in paths:
-            full_manip = cached_extract_manipulation(path)
-            short_manip = short_map.get(full_manip, full_manip)
+            full_manipulation = extract_manipulation(path)
+            short_manipulation = short_map.get(
+                full_manipulation,
+                full_manipulation,
+            )
+
             metadata.append({
-                "original_id": cached_extract_original_id(path),
-                "manipulation": short_manip,
+                "original_id": extract_original_id(path),
+                "manipulation": short_manipulation,
                 "path": path,
             })
 
@@ -431,7 +351,7 @@ def extract_and_store_features(
                 f"[{split}] {batch_idx} / "
                 f"{len(dataloader)}"
             )
- 
+
     index_path = os.path.join(
         feature_dir,
         "index.json",
@@ -439,20 +359,13 @@ def extract_and_store_features(
 
     writer.close(index_path)
 
-    with open(index_path, "r") as file:
+    with open(index_path, "r", encoding="utf-8") as file:
         index = json.load(file)
 
     pairs = build_pairs_from_index(
         index,
         orig_key="resized",
     )
-
-    manipulation_counter = Counter()
-    original_counter = Counter()
-
-    for original_idx, manipulated_idx, manipulation in pairs:
-        manipulation_counter[manipulation] += 1
-        original_counter[original_idx] += 1
 
     pair_path = os.path.join(
         feature_dir,
@@ -465,76 +378,67 @@ def extract_and_store_features(
         allow_pickle=True,
     )
 
-    print(
-        f"[{split}] pairs built: {len(pairs)}"
-    )
+    print(f"[{split}] pairs built: {len(pairs)}")
     print(
         f"[{split}] done in "
         f"{time.time() - start:.2f}s"
     )
 
-
-def _filter_imagefolder_by_subdir(
-    dataset,
-    subdir_name,
-):
-    """Keep only samples containing subdir_name in their path."""
+def _filter_imagefolder_by_subdir(dataset, subdir_name):
+    """Keep only samples that contain subdir_name in their path."""
     if not subdir_name:
         return dataset
-
-    filtered = [
-        (path, target)
-        for path, target in dataset.samples
-        if subdir_name in path.split(os.sep)
+    dataset.samples = [
+        path for path in dataset.samples if subdir_name in path.split(os.sep)
     ]
-
-    dataset.samples = filtered
-    dataset.targets = [
-        target
-        for _, target in filtered
-    ]
-    dataset.imgs = filtered
-
+    dataset.targets = [0] * len(dataset.samples)
+    dataset.imgs = list(zip(dataset.samples, dataset.targets))
     return dataset
 
+def _filter_imagefolder_by_manipulation(dataset, allowed_manips, short_map):
+    """Keep only images whose manipulation is in allowed_manips."""
 
-def _filter_imagefolder_by_manipulation(
-    dataset,
-    allowed_manips,
-    shortened_manips,
-):
-    """Keep only samples with an allowed manipulation."""
     filtered = []
 
-    for path, target in dataset.samples:
-        manipulation = extract_manipulation(path)
+    for path in dataset.samples:
+        manip = extract_manipulation(path)
 
-        if manipulation.startswith("qwen_"):
-            manipulation = re.sub(
-                r"_\d+$",
-                "",
-                manipulation,
-            )
+        if manip.startswith("qwen_"):
+            manip = re.sub(r"_\d+$", "", manip)
 
-        manipulation = shortened_manips.get(
-            manipulation,
-            manipulation,
-        )
+        manip = short_map.get(manip, manip)
 
-        if manipulation in allowed_manips:
-            filtered.append((path, target))
+        if manip in allowed_manips:
+            filtered.append(path)
 
     dataset.samples = filtered
-    dataset.targets = [
-        target
-        for _, target in filtered
-    ]
-    dataset.imgs = filtered
+    dataset.targets = [0] * len(filtered)
+    dataset.imgs = list(zip(dataset.samples, dataset.targets))
 
     print(f"Kept {len(filtered)} images")
 
     return dataset
 
+short_map = cfg.get("shortened_manipulations", {})
+
+def make_dataloader(dataset):
+    loader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": False,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+
+    if num_workers > 0:
+        loader_kwargs.update({
+            "prefetch_factor": 4,
+            "persistent_workers": False,
+        })
+
+    return DataLoader(
+        dataset,
+        **loader_kwargs,
+    )
 def create_model_and_transform(model_name):
     if model_name == "convnext_base.fb_in22k_ft_in1k":
         model = (
@@ -542,17 +446,16 @@ def create_model_and_transform(model_name):
                 model_name,
                 pretrained=True,
                 features_only=True,
-                out_indices=(1, 2, 3),
             )
             .eval()
             .to(device)
         )
 
         feature_save_dir_train = (
-            "new_convnext_features/augmented_train"
+            "convnext_features/augmented_train"
         )
         feature_save_dir_test = (
-            "new_convnext_features/augmented_test"
+            "convnext_features/augmented_test"
         )
 
         transform = transforms.Compose([
@@ -579,10 +482,10 @@ def create_model_and_transform(model_name):
         )
 
         feature_save_dir_train = (
-            "new_swinv2_features/augmented_train"
+            "swinv2_features/augmented_train"
         )
         feature_save_dir_test = (
-            "new_swinv2_features/augmented_test"
+            "swinv2_features/augmented_test"
         )
 
         transform = transforms.Compose([
@@ -610,10 +513,10 @@ def create_model_and_transform(model_name):
         )
 
         feature_save_dir_train = (
-            "new_dinov3_features/augmented_train"
+            "dinov3_features/augmented_train"
         )
         feature_save_dir_test = (
-            "new_dinov3_features/augmented_test"
+            "dinov3_features/augmented_test"
         )
 
         transform = transforms.Compose([
@@ -637,6 +540,28 @@ def create_model_and_transform(model_name):
         f"Unsupported model: {model_name}"
     )
 
+def get_target_layers(config, model_name):
+    """
+    Supports either:
+
+    target_layers: [0, 1, 2, 3]
+
+    or:
+
+    target_layers:
+      model_name_a: [0, 1, 2, 3]
+      model_name_b: [0, 1, 2, 3]
+    """
+    configured_layers = config["target_layers"]
+
+    if isinstance(configured_layers, dict):
+        if model_name not in configured_layers:
+            raise KeyError(
+                f"No target_layers configured for {model_name}"
+            )
+        configured_layers = configured_layers[model_name]
+
+    return list(configured_layers)
 
 for model_name in cfg["models"]:
     model_target_layers = get_target_layers(
@@ -645,21 +570,10 @@ for model_name in cfg["models"]:
     )
 
     for dataset in datasets:
-        if dataset == "CUB_200_2011":
-            root_dir = os.path.join(
-                dataset_path,
-                "CUB_200_2011",
-                "CUB_200_2011",
-            )
-        elif dataset == "STANFORD_CARS":
-            root_dir = os.path.join(
-                dataset_path,
-                "STANFORD_CARS",
-            )
-        else:
-            raise ValueError(
-                f"Unsupported dataset: {dataset}"
-            )
+        root_dir = os.path.join(
+            dataset_path,
+            dataset,
+        )
 
         (
             model,
@@ -682,7 +596,7 @@ for model_name in cfg["models"]:
                     "augmented_train",
                 )
 
-                train_dataset = ImageFolderWithPaths(
+                train_dataset = ImageDatasetWithPaths(
                     root=train_image_dir,
                     transform=transform,
                 )
@@ -708,21 +622,8 @@ for model_name in cfg["models"]:
                     manipulation_model_dir,
                 )
 
-                os.makedirs(
-                    train_feature_dir,
-                    exist_ok=True,
-                )
-
-                train_dataloader = DataLoader(
+                train_dataloader = make_dataloader(
                     train_dataset,
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=num_workers,
-                    pin_memory=pin_memory,
-                    prefetch_factor=4
-                    if num_workers > 0
-                    else None,
-                    persistent_workers=num_workers > 0,
                 )
 
                 extract_and_store_features(
@@ -742,7 +643,7 @@ for model_name in cfg["models"]:
                     "augmented_test",
                 )
 
-                test_dataset = ImageFolderWithPaths(
+                test_dataset = ImageDatasetWithPaths(
                     root=test_image_dir,
                     transform=transform,
                 )
@@ -768,23 +669,10 @@ for model_name in cfg["models"]:
                     manipulation_model_dir,
                 )
 
-                os.makedirs(
-                    test_feature_dir,
-                    exist_ok=True,
+                test_dataloader = make_dataloader(
+                    test_dataset,
                 )
 
-                test_dataloader = DataLoader(
-                    test_dataset,
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=num_workers,
-                    pin_memory=pin_memory,
-                    prefetch_factor=4
-                    if num_workers > 0
-                    else None,
-                    persistent_workers=num_workers > 0,
-                )
-                
                 extract_and_store_features(
                     dataloader=test_dataloader,
                     feature_dir=test_feature_dir,

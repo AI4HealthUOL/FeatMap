@@ -1,0 +1,186 @@
+target_manipulations:
+  lsun_bedroom:
+    # direct:
+    #       models: ["linear", "mlp", "cnn", "transformer"]
+    #       manipulations:
+    #          - grayscale
+    #          - hue_shift_60
+    #          - noise_40
+    #          - mask_big_square_center
+    #          - mask_bottom_right_square
+    #          - mask_small_square_center
+    #          - mask_top_left_square
+    #       feature_keys: ["feat1", "feat2"]
+
+    qwen_gs_1_infsteps_10:
+           models: ["cnn", "transformer"]
+           manipulations:
+              - Add_teddybear
+              # - Make_bed_unmade
+              # - Color_bedding_blue
+              # - Turn_on_lamps
+           feature_keys: ["feat3"]
+      
+    #Geometric transform specific models
+    # geom_tf_apply_group:
+    #          models: ["linear", "mlp", "cnn", "transformer"]
+    #          manipulations:
+    #            - rotation_90
+    #            - rotation_180
+    #            - rotation_270
+    #            - mirror_h
+    #            - mirror_v
+    #          apply_transform: true
+    #          feature_keys: ["feat1", "feat2", "feat3"]
+
+skip_combinations:
+  - ["swinv2", "feat0", "transformer"]
+  - ["convnext", "feat0", "transformer"]
+  
+model_path: "models/models_lsun/"
+log_path: "logs/"
+norm_params_path: "models/norm_params_lsun"
+dataset_path: "datasets"
+
+shared_norm_type: "resized"
+
+# Training supports features extracted from convnext, swinv2, dinov3
+extractor_name: ["convnext", "dinov3", "swinv2"]
+
+# Size of the extracted features from convnext stages
+feature_keys:
+  convnext:
+        feat1:
+          input_dim: 256
+          output_dim: 256
+          spatial_size: 36
+          normalize_features: true
+          recalc_norm_params: true
+        feat2:
+          input_dim: 512
+          output_dim: 512
+          spatial_size: 18
+          normalize_features: true
+          recalc_norm_params: true
+        feat3:
+          input_dim: 1024
+          output_dim: 1024
+          spatial_size: 9
+          normalize_features: false
+          recalc_norm_params: false
+  swinv2:
+       feat1:
+           input_dim: 256
+           output_dim: 256
+           spatial_size: 48
+           normalize_features: true
+           recalc_norm_params: true
+       feat2:
+           input_dim: 512
+           output_dim: 512
+           spatial_size: 24
+           normalize_features: true
+           recalc_norm_params: true
+       feat3:
+            input_dim: 1024
+            output_dim: 1024
+            spatial_size: 12
+            normalize_features: true
+            recalc_norm_params: false
+  dinov3:
+      feat1:
+           input_dim: 768
+           output_dim: 768
+           spatial_size: 14
+           normalize_features: true
+           recalc_norm_params: true
+      feat2:
+           input_dim: 768
+           output_dim: 768
+           spatial_size: 14
+           normalize_features: true
+           recalc_norm_params: true
+      feat3:
+           input_dim: 768
+           output_dim: 768
+           spatial_size: 14
+           normalize_features: true
+           recalc_norm_params: true
+
+# if available, otherwise uses all remaining
+train_subset_size: 8000
+# random seed for dataset creation
+seed: 42
+val_ratio: 0.05
+
+batch_size: 32
+accumulate_grad_batches: 2
+learning_rate: 0.0001
+
+loss_functions:
+  # - name: "mse"
+  # - name: "huber"
+
+  - name: "mse+median_cos"
+    params:
+      weights:
+        mse: 0.3
+        median_cos: 0.7
+
+  # - name: "mse+mean_cos"
+  #   params:
+  #     weights:
+  #       mse: 0.3
+  #       mean_cos: 0.7
+
+  # - name: "mse+trimmed_cos"
+  #   params:
+  #     weights:
+  #       mse: 0.3
+  #       trimmed_cos: 0.7
+
+  #     trimmed_cos:
+  #       trim_frac: 0.15
+
+  # - name: "mse+ntxent"
+  #   params:
+  #     weights:
+  #       mse: 1.0
+  #       ntxent: 0.05
+
+  #     ntxent:
+  #       temp: 0.1
+  #       sample_neg: 512
+
+
+num_epochs: 100
+# Early Stopping patience
+patience: 6
+
+num_workers: 4
+persistent_workers: true
+prefetch_factor: 2
+pin_memory: true
+
+models:
+  additive:
+    init_delta: null
+  local_nonshared_linear:
+    bias: true
+  linear: ""
+  mlp:
+     hidden_dim: 512
+     dropout: 0.2
+  cnn:
+     hidden_dim: 512
+     kernel_size: 3
+     dropout: 0.2
+  transformer:
+    num_layers: 4
+    num_heads: 8
+    hidden_dim: 512
+    dropout: 0.2
+  orthogonal_procrustes: {}
+  ridge:
+    gamma: 1.0
+

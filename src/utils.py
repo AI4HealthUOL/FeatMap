@@ -4,10 +4,32 @@ import numpy as np
 
 """Util functions for repeated use"""
 
-def get_shared_ids(pairs_a, meta_a, pairs_b, meta_b):
-    a = {meta_a[int(p[0])]["original_id"] for p in pairs_a}
-    b = {meta_b[int(p[0])]["original_id"] for p in pairs_b}
-    return list(a & b)
+def get_shared_ids(
+    conv_p=None, conv_m=None,
+    swin_p=None,  swin_m=None,
+    dino_p=None,  dino_m=None,
+):
+    def ids_from_extractor(pairs, meta):
+        if pairs is None or meta is None:
+            return None
+        
+        return {meta[int(p[0])]["original_id"] for p in pairs}
+
+    id_sets = []
+
+    for (p, m) in [(conv_p, conv_m), (swin_p, swin_m), (dino_p, dino_m)]:
+        s = ids_from_extractor(p, m)
+        if s is not None:
+            id_sets.append(s)
+
+    if not id_sets:
+        return []
+
+    shared = id_sets[0]
+    for s in id_sets[1:]:
+        shared = shared & s
+
+    return list(shared)
 
 
 def filter_pairs_by_ids(pairs, meta, ids):
@@ -21,7 +43,10 @@ def filter_pairs_by_ids(pairs, meta, ids):
 def sample_ids(ids, k, seed=42):
     rng = np.random.default_rng(seed)
     k = min(k, len(ids))
-    return rng.choice(ids, k, replace=False)
+    
+    ids_list = sorted(list(ids))
+    
+    return rng.choice(ids_list, k, replace=False)
 
 def get_mapping_run_paths(
     base_path,

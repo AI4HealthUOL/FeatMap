@@ -1,8 +1,10 @@
 # FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry
-This is the official repository for the paper: [FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry](https://arxiv.org/abs/2605.11203).
+This is the official repository for the paper: **How Far Does a Shared Linear Map Go? Probing Feature-Space Manipulability for Image Editing**
 
 ## Abstract
-Intermediate feature representations represent the backbone for the expressivity and adaptability of deep neural networks. However, their geometric structure remains poorly understood. In this submission, we provide indirect insights into this matter by applying a broad selection of manipulations in input space, ranging from geometric and photometric transformations to local masking and semantic manipulations using generative image editing models, and assess the feasibility of learning a mapping in the feature space, mapping from the original to the manipulated feature map. To this end, we devise different types of mappings, from linear to non-linear and local to global mappings and assess both the reconstruction quality of the mapping as well as the semantic content of the mapped representations. We demonstrate the feasibility of learning such mappings for all considered transformations. While global (transformer) models that operate on the full feature map often achieve best results, we show that the same can be achieved with a shared linear model operating on a single feature vector typically with very little degradation in reconstruction quality, even for highly non-trivial semantic manipulations. We analyze the corresponding mappings across different feature layers and characterize them according to dominance of weight vs. bias and the effective rank of the linear transformations. These results provide hints for the hypothesis that the feature space is to a first degree of approximation organized in linear structures. From a broader perspective, the study demonstrates that generative image editing models might open the door to a deeper understanding of the feature space through input manipulation.
+Understanding how image-space transformations manifest in a model's internal feature representations is a longstanding goal in representation analysis. 
+Prior work on model stitching and equivariance has shown that certain geometric transformations — rotations, flips — can be captured by learned linear operators between feature maps. It remains unclear whether this holds for a broader and more practically relevant class of transformations, including photometric edits and open-ended, semantically defined manipulations with no a priori linear structure in input space, such as those produced by prompted diffusion-based image editors.
+We train probes with increasing capacity, ranging from a single linear map shared across all spatial locations in a feature map to nonlinear per-vector, receptive-field, and global transformer models, to predict the feature-space effects of diverse image manipulations: geometric transforms, photometric edits, local occlusions, and semantic edits (e.g., altering headlights, rim color, body color) generated via diffusion-based editing. We evaluate three vision backbones: two supervised architectures, ConvNeXt and SwinV2, and one self-supervised foundation model, DINOv3. For ConvNeXt and SwinV2, a single shared linear map, without spatial or instance-dependent conditioning, often predicts held-out manipulation outcomes with little loss relative to substantially more expressive nonlinear models. This pattern is less consistently observed for DINOv3. For the supervised backbones, the sufficiency of the shared linear map generally increases with network depth. We further show this holds despite the spatial weight-tying constraint, which is not implied by prior stitching formulations and represents a nontrivial locality claim independent of linearity. We deliberately scope our claims to representational sufficiency for held-out prediction, rather than to intrinsic properties of feature-space geometry. Our results indicate that a remarkably simple, shared linear operator is often sufficient to represent a broad class of image manipulations, with the semantic content of the edits captured by its leading k singular components and higher-rank components primarily refining image details.
 
 ## Citation
 If you find our work helpful, please cite our paper:
@@ -20,11 +22,11 @@ If you find our work helpful, please cite our paper:
 
 ## Method overview
 
-<img src="assets/method_overview.png" alt="Methods" style="width:70%; height:auto;">
+<img src="assets/featmap.png" alt="Methods" style="width:80%; height:auto;">
 
 ## Example results
 
-<img src="assets/lin_tf_map_samples.png" alt="Methods" style="width:70%; height:auto;"> 
+<img src="assets/lin_tf_map_samples.png" alt="Methods" style="width:80%; height:auto;"> 
 
 ## Getting started
 All experiments were conducted on a Linux system with an NVIDIA L40 GPU.
@@ -59,7 +61,20 @@ We cannot directly provide our used datasets, but here are the steps to reproduc
   number  = {CNS-TR-2011-001}
 }
 ```
-  - Sort the dataset into this structure, all images need **unique** numeric ids!:
+  - Download a subset of the LSUN Bedroom dataset
+```
+@misc{yu2016lsunconstructionlargescaleimage,
+      title={LSUN: Construction of a Large-scale Image Dataset using Deep Learning with Humans in the Loop}, 
+      author={Fisher Yu and Ari Seff and Yinda Zhang and Shuran Song and Thomas Funkhouser and Jianxiong Xiao},
+      year={2016},
+      eprint={1506.03365},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/1506.03365}, 
+}`
+```
+  - Sort the dataset into this structure, all images need **unique** numeric ids!
+  - The LSUN Bedroom doesnt have subclasses and images can be saved directly into the train/test folders
 
 ```
 datasets/
@@ -84,10 +99,10 @@ datasets/
             ├── class_1/
             ├── class_2/
             └── ...
-
 ```
 
-Configure the manipulations you want to apply in [`config/apply_manipulations.yaml`](config/apply_manipulations.yaml). Adjust the **dataset_path** to your stored dataset. This will then create folders **augmented_train** and **augmented_test** with the same class folder structure but with the augmented images named like **ID_manipulation.png**.
+
+Configure the manipulations you want to apply in [`config/apply_manipulations.yaml`](config/apply_manipulations.yaml) or [`config/apply_manipulations_lsun.yaml`](config/apply_manipulations_lsun.yaml). Adjust the **dataset_path** to your stored dataset. This will then create folders **augmented_train** and **augmented_test** with the same class folder structure but with the augmented images named like **ID_manipulation.png**.
 
 **NOTE: If you want to use the Qwen Image editing model VRAM of ~57 GB is required. We used two L40 GPUs for this. Inference took ~30s per image, so configure imgs_per_class to your compute budget.**
 
@@ -109,25 +124,30 @@ python src/prepare_datasets/extract_features.py
 
 **NOTE:** Extracting features for all manipulations can require a large amount of disk space (up to ~1.6 TB), due to the high dimensionality of the stored feature vectors and the number of augmented samples.
 
-#### Feature dimensions from backbone stages
+#### Feature dimensions for all backbones and layers. For DINOv3, feature keys `feat1--feat3` correspond to public stages 1–3 (blocks 6, 9, and final)
 
-| Backbone  | Input Images        | Layer depth | Feature dimensions      |
-|-----------|---------------------|-------------|--------------------------|
-| ConvNeXt  | 288 × 288 × 3       | 0           | 128 × 72 × 72            |
-|           |                     | 1           | 256 × 36 × 36            |
-|           |                     | 2           | 512 × 18 × 18            |
-|           |                     | 3           | 1024 × 9 × 9             |
-| SwinV2    | 384 × 384 × 3       | 3           | 1024 × 12 × 12           |
+
+| Backbone  | Input Images       | Layer depth         | Feature dimensions      |
+|-----------|--------------------|---------------------|-------------------------|
+| ConvNeXt  | 288×288×3          | feat1               | 256×36×36               |
+|           |                    | feat2               | 512×18×18               |
+|           |                    | feat3               | 1024×9×9                |
+| SwinV2    | 384×384×3          | feat1               | 256×48×48               |
+|           |                    | feat2               | 512×24×24               |
+|           |                    | feat3               | 1024×12×12              |
+| DINOv3    | 224×224×3          | feat1 (Block 6)     | 768×14×14               |
+|           |                    | feat2 (Block 9)     | 768×14×14               |
+|           |                    | feat3 (final)       | 768×14×14               |
 
 ### Train mapping models
-Configure [`config/train_mapping.yaml`](config/train_mapping.yaml). Here you can set up which model should be trained with which model. Feature dimensions and manipulation names need to match to the ones created during feature extraction! Adjust all paths to where you saved your datasets and want the models and training logs to be saved.
+Configure [`config/train_mapping_cars.yaml`](config/train_mapping_cars.yaml), [`config/train_mapping_lsun.yaml`](config/train_mapping_lsun.yaml). Here you can set up which model should be trained with which model. Feature dimensions and manipulation names need to match to the ones created during feature extraction! Adjust all paths to where you saved your datasets and want the models and training logs to be saved. The `_baseline` variant implements additional mapping models.
 
 ```
-python src/train_mapping.py
+python src/train_mapping_cars.py
 ```
 
 ### Test mapping models
-This will apply the trained mapping models to new test features, reconstruct with FeatInv and calculate evaluation metrics, configure [`config/test_mapping.yaml`](config/test_mapping.yaml). 
+This will apply the trained mapping models to new test features, reconstruct with FeatInv and calculate evaluation metrics, configure [`config/test_mapping_cars.yaml`](config/test_mapping_cars.yaml), [`config/test_mapping_lsun.yaml`](config/test_mapping_lsun.yaml). 
 
 **Required for testing:**  
 - Clone FeatInv into `src/FeatInv`  
@@ -140,7 +160,7 @@ This will apply the trained mapping models to new test features, reconstruct wit
   #### At the time of writing only the pre-trained FeatInv model weights of the model that was trained on the final ConvNeXt feature maps (in our naming feat3) is publicly available [HERE](https://figshare.com/articles/online_resource/FeatInv_FeatInv-ConvNeXt_Checkpoint/30801191/1).
 
 ```
-python src/test_mapping.py
+python src/test_mapping_cars.py
 ```
 
 ### Evaluating the classification performance
@@ -154,6 +174,12 @@ Once finetuned you can run image classification tests with **test_img_classifier
 
 ```
 python src/test_classifier.py
+```
+
+### Evaluating reconstruction robustness
+We added additional experiments evaluation the FeatInv reconstruction comparing mapping results against matched magnitude scaled added feature noise. To rerun this experiment  configure [`config/test_mapping_cars.yaml`](config/test_mapping_cars.yaml). And run:
+```
+python src/test_mapping_reconstruction_control.py
 ```
 
 ### Additional evaluations

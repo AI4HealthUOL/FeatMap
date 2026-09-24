@@ -1,0 +1,35 @@
+shortened_manipulations:
+  "qwen_Add_a_single_brown_teddy_bear_positioned_in_the_mi":
+    "Add_teddybear"
+
+  "qwen_Make_the_visible_bed_appear_naturally_unmade_and_r":
+    "Make_bed_unmade"
+
+  "qwen_Recolor_the_visible_bedding_bright_blue_Change_onl":
+    "Color_bedding_blue"
+
+  "qwen_Turn_on_all_visible_lamps_in_the_room_Change_only_":
+    "Turn_on_lamps"
+
+models:
+    #- convnext_base.fb_in22k_ft_in1k
+    - swinv2_base_window12to24_192to384_22kft1k
+    - dinov3_vitb16_featmap
+
+target_layers: [0, 1, 2, 3]
+
+datasets:
+    - lsun_bedroom
+
+manipulation_model_dirs:
+    - direct
+    - qwen_gs_1_infsteps_10
+  
+dataset_path: "datasets"
+model_path: "models"
+batch_size: 128
+num_workers: 8
+pin_memory: true
+extract_from_splits:
+  - train
+  - test
