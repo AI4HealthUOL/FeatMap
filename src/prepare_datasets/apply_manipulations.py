@@ -360,13 +360,8 @@ def main():
             device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu")
             print(f"Using device: {device}")
-<<<<<<< HEAD
 
             token = os.environ.get("HF_TOKEN")
-=======
-            token = os.environ.get(
-                "HF_TOKEN", "")
->>>>>>> e2c2184 (V2: Feat1-3 DinoV3, SwinV2, ConvNeXt, Lsun Bedroom dataset)
 
             if token is None or token.startswith("hf_***"):
                 raise ValueError(
