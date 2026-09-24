@@ -1,4 +1,4 @@
-# FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry
+# How Far Does a Shared Linear Map Go? Probing Feature-Space Manipulability for Image Editingy
 This is the official repository for the paper: **How Far Does a Shared Linear Map Go? Probing Feature-Space Manipulability for Image Editing**
 
 ## Abstract
