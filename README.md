@@ -6,20 +6,6 @@ Understanding how image-space transformations manifest in a model's internal fea
 Prior work on model stitching and equivariance has shown that certain geometric transformations — rotations, flips — can be captured by learned linear operators between feature maps. It remains unclear whether this holds for a broader and more practically relevant class of transformations, including photometric edits and open-ended, semantically defined manipulations with no a priori linear structure in input space, such as those produced by prompted diffusion-based image editors.
 We train probes with increasing capacity, ranging from a single linear map shared across all spatial locations in a feature map to nonlinear per-vector, receptive-field, and global transformer models, to predict the feature-space effects of diverse image manipulations: geometric transforms, photometric edits, local occlusions, and semantic edits (e.g., altering headlights, rim color, body color) generated via diffusion-based editing. We evaluate three vision backbones: two supervised architectures, ConvNeXt and SwinV2, and one self-supervised foundation model, DINOv3. For ConvNeXt and SwinV2, a single shared linear map, without spatial or instance-dependent conditioning, often predicts held-out manipulation outcomes with little loss relative to substantially more expressive nonlinear models. This pattern is less consistently observed for DINOv3. For the supervised backbones, the sufficiency of the shared linear map generally increases with network depth. We further show this holds despite the spatial weight-tying constraint, which is not implied by prior stitching formulations and represents a nontrivial locality claim independent of linearity. We deliberately scope our claims to representational sufficiency for held-out prediction, rather than to intrinsic properties of feature-space geometry. Our results indicate that a remarkably simple, shared linear operator is often sufficient to represent a broad class of image manipulations, with the semantic content of the edits captured by its leading k singular components and higher-rank components primarily refining image details.
 
-## Citation
-If you find our work helpful, please cite our paper:
-```
-@misc{krey2026featmapunderstandingimagemanipulation,
-      title={FeatMap: Understanding image manipulation in the feature space and its implications for feature space geometry}, 
-      author={Elias B. Krey and Nils Neukirch and Nils Strodthoff},
-      year={2026},
-      eprint={2605.11203},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2605.11203}, 
-}
-```
-
 ## Method overview
 
 <img src="assets/featmap.png" alt="Methods" style="width:80%; height:auto;">
